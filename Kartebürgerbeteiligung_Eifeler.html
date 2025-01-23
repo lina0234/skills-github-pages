@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html> 
+ <head>
+   <meta charset="UTF-8">
+   <title>Übungsblatt 4 - Bürgerbeteiligungskarte</title>
+    <title>Bürgerbeteiligungskarte</title>
+    <link rel="stylesheet" type="text/css" href="libs/ol-v10.3.1/ol.css">
+    <link rel="stylesheet" type="text/js" href="libs/proj4js-2.15.0/proj4.js">
+    <style>
+        .wmsLayer {
+            width: 99.9%;
+            height: 630px;
+            margin-top: 10px;
+        }
+        .map {
+            width: 100%;
+            height: 500px;
+        }
+    </style>
+</head>
+<body>
+    <script src="libs/ol-v10.3.1/ol.js"></script>
+    <script src="libs/proj4js-2.15.0/proj4.js"></script>
+    <h1>Bürgerbeteiligung</h1>
+    <div id="map" class="map"></div>
+    <div id="info" style="padding: 10px; border: 1px solid #ccc; margin-top: 10px;"></div>
+
+    <script>
+        proj4.defs("EPSG:32632","+proj=utm +zone=32 +datum=WGS84 +units=m +no_defs +type=crs");
+        ol.proj.proj4.register(proj4);
+        // OpenLayers map initialization
+        
+        const wmslayer = new ol.layer.Tile({
+                    source: new ol.source.TileWMS({
+                        url: 'http://osmatrix.geog.uni-heidelberg.de:8080/geoserver/mauer/wms',  // Replace with your GeoServer URL
+                        params: {
+                            'LAYERS': 'mauer:ub4_baugebiet',
+                            'TILED': true,
+                            'FORMAT': 'image/png',
+                        }, 
+                    }),
+        });
+
+        const wfsSource = new ol.source.Vector({
+  format: new ol.format.GeoJSON(), // format which will be read by openlayers
+  url: 'http://osmatrix.geog.uni-heidelberg.de:8080/geoserver/mauer/wms?' +
+      'service=WFS&' +
+      'version=1.1.0&' + // version of the WFS
+      'request=GetFeature&' + // type of request
+      'typename=mauer:ub4_bebauung&' +  // layername
+      'outputFormat=application/json&srsname=EPSG:32632' // format to be requested is defined here as geojson
+});
+
+// Define a WFS layer
+const wfsLayer = new ol.layer.Vector({
+  source: wfsSource,
+});
+
+const select = new ol.interaction.Select({
+  layers: [wfsLayer]
+});
+
+const translate = new ol.interaction.Translate({
+  layers: [wfsLayer]
+});
+
+        const map = new ol.Map({
+            target: 'map',
+            layers: [
+                new ol.layer.Tile({
+                    source: new ol.source.OSM()
+                }), wmslayer, wfsLayer],
+        
+            view: new ol.View({
+                center: ol.proj.fromLonLat([8.658, 49.422]),  // Adjust coordinates as needed
+                zoom: 16
+            }), 
+            interactions: [select, translate]
+        });
+
+        // Handle map click event for GetFeatureInfo
+        map.on('singleclick', function (evt) {
+            const viewResolution = map.getView().getResolution();
+            const wmsSource = map.getLayers().item(1).getSource();
+            const url = wmsSource.getFeatureInfoUrl(
+                evt.coordinate, 
+                viewResolution, 
+                'EPSG:32632', 
+                {'INFO_FORMAT': 'application/json'}
+            );
+
+            if (url) {
+                fetch(url)
+                    .then(response => response.json())
+                    .then(data => {
+                        const info = document.getElementById('info');
+                        if (data.features.length > 0) {
+                            const attributes = data.features[0].properties;
+                            info.innerHTML = '<strong>Attribute:</strong><br>' +
+                                Object.entries(attributes).map(([key, value]) => `${key}: ${value}`).join('<br>');
+                        } else {
+                            info.innerHTML = 'Keine Informationen vorhanden.';
+                        }
+                    })
+                    .catch(() => {
+                        document.getElementById('info').innerHTML = 'Fehler beim Abrufen der Daten.';
+                    });
+            }
+        });
+    </script>
+</body>
+</html>
